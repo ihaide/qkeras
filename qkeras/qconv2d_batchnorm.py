@@ -109,7 +109,7 @@ class QConv2DBatchnorm(QConv2D):
     """
 
     # intialization the qconv2d part of the composite layer
-    super().__init__(
+    super(QConv2DBatchnorm, self).__init__(
         filters=filters,
         kernel_size=kernel_size,
         strides=strides,
@@ -126,8 +126,7 @@ class QConv2DBatchnorm(QConv2D):
         bias_constraint=bias_constraint,
         kernel_quantizer=kernel_quantizer,
         bias_quantizer=bias_quantizer,
-        **kwargs
-    )
+        **kwargs)
 
     # initialization of batchnorm part of the composite layer
     self.batchnorm = layers.BatchNormalization(

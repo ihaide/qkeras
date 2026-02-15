@@ -45,13 +45,9 @@ class QAveragePooling2D(AveragePooling2D):
     else:
       self.activation = activation
 
-    super().__init__(
-        pool_size=pool_size,
-        strides=strides,
-        padding=padding,
-        data_format=data_format,
-        **kwargs
-    )
+    super(QAveragePooling2D, self).__init__(
+        pool_size=pool_size, strides=strides, padding=padding,
+        data_format=data_format, **kwargs)
 
   def call(self, inputs):
     """Performs quantized AveragePooling followed by QActivation.
@@ -108,10 +104,10 @@ class QAveragePooling2D(AveragePooling2D):
   def get_config(self):
     config = {
         "average_quantizer": constraints.serialize(
-            self.average_quantizer_internal# Google internal code, commented out by copybara
+            self.average_quantizer_internal
         ),
         "activation": constraints.serialize(
-            self.activation# Google internal code, commented out by copybara
+            self.activation
         ),
     }
     base_config = super(QAveragePooling2D, self).get_config()
@@ -146,7 +142,8 @@ class QGlobalAveragePooling2D(GlobalAveragePooling2D):
     else:
       self.activation = activation
 
-    super().__init__(data_format=data_format, **kwargs)
+    super(QGlobalAveragePooling2D, self).__init__(
+        data_format=data_format, **kwargs)
 
   def compute_pooling_area(self, input_shape):
     if not isinstance(input_shape, tuple):
@@ -205,10 +202,10 @@ class QGlobalAveragePooling2D(GlobalAveragePooling2D):
   def get_config(self):
     config = {
         "average_quantizer": constraints.serialize(
-            self.average_quantizer_internal# Google internal code, commented out by copybara
+            self.average_quantizer_internal
         ),
         "activation": constraints.serialize(
-            self.activation# Google internal code, commented out by copybara
+            self.activation
         ),
     }
     base_config = super(QGlobalAveragePooling2D, self).get_config()

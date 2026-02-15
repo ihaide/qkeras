@@ -155,7 +155,7 @@ class QActivation(Layer, PrunableLayer):
   # object if string is given as activation.
   def __init__(self, activation, **kwargs):
 
-    super().__init__(**kwargs)
+    super(QActivation, self).__init__(**kwargs)
 
     self.activation = activation
 
@@ -267,7 +267,7 @@ class QAdaptiveActivation(Layer, PrunableLayer):
         that this param is ignored if the activation is not quantized_relu
       **kwargs: Args passed to the Layer class.
     """
-    super().__init__(**kwargs)
+    super(QAdaptiveActivation, self).__init__(**kwargs)
 
     self.total_bits = total_bits
     self.symmetric = symmetric
@@ -630,7 +630,7 @@ class QDense(Dense, PrunableLayer):
     if activation is not None:
       activation = get_quantizer(activation)
 
-    super().__init__(
+    super(QDense, self).__init__(
         units=units,
         activation=activation,
         use_bias=use_bias,
@@ -641,8 +641,7 @@ class QDense(Dense, PrunableLayer):
         activity_regularizer=activity_regularizer,
         kernel_constraint=kernel_constraint,
         bias_constraint=bias_constraint,
-        **kwargs,
-    )
+        **kwargs)
 
   def call(self, inputs):
     if self.kernel_quantizer:
@@ -672,35 +671,35 @@ class QDense(Dense, PrunableLayer):
     config = {
         "units": self.units,
         "activation": activations.serialize(
-            self.activation# Google internal code, commented out by copybara
+            self.activation
         ),
         "use_bias": self.use_bias,
         "kernel_quantizer": constraints.serialize(
-            self.kernel_quantizer_internal# Google internal code, commented out by copybara
+            self.kernel_quantizer_internal
         ),
         "bias_quantizer": constraints.serialize(
-            self.bias_quantizer_internal# Google internal code, commented out by copybara
+            self.bias_quantizer_internal
         ),
         "kernel_initializer": initializers.serialize(
-            self.kernel_initializer# Google internal code, commented out by copybara
+            self.kernel_initializer
         ),
         "bias_initializer": initializers.serialize(
-            self.bias_initializer# Google internal code, commented out by copybara
+            self.bias_initializer
         ),
         "kernel_regularizer": regularizers.serialize(
-            self.kernel_regularizer# Google internal code, commented out by copybara
+            self.kernel_regularizer
         ),
         "bias_regularizer": regularizers.serialize(
-            self.bias_regularizer# Google internal code, commented out by copybara
+            self.bias_regularizer
         ),
         "activity_regularizer": regularizers.serialize(
-            self.activity_regularizer# Google internal code, commented out by copybara
+            self.activity_regularizer
         ),
         "kernel_constraint": constraints.serialize(
-            self.kernel_constraint# Google internal code, commented out by copybara
+            self.kernel_constraint
         ),
         "bias_constraint": constraints.serialize(
-            self.bias_constraint# Google internal code, commented out by copybara
+            self.bias_constraint
         ),
         "kernel_range": self.kernel_range,
         "bias_range": self.bias_range,

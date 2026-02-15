@@ -58,7 +58,7 @@ class QNoiseScheduler(tf.keras.callbacks.Callback):
         not.
       log_dir: Str. log directory to save qnoise_factor every epoch end.
     """
-    super().__init__()
+    super(QNoiseScheduler, self).__init__()
 
     self.start = start
     self.finish = finish

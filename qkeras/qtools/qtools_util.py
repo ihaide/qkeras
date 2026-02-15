@@ -27,12 +27,12 @@ import tensorflow as tf
 from qkeras.qtools import quantized_operators
 
 
-def get_val(feature, key, default_val=None):
+def get_val(feature, key):
   # Return feature[key] or feature.key
   if isinstance(feature, dict):
-    val = feature.get(key, default_val)
+    val = feature.get(key, None)
   else:
-    val = getattr(feature, key, default_val)
+    val = getattr(feature, key, None)
   return val
 
 
@@ -150,9 +150,7 @@ def get_operation_count(layer, input_shape):
         "BatchNormalization" in layer.__class__.__name__):
     operation_count = np.prod(input_shape[1:])
 
-  elif layer.__class__.__name__ in [
-      "QConv2D", "Conv2D", "QConv2DBatchnorm",
-      "QConv2DTranspose", "Conv2DTranspose"]:
+  elif layer.__class__.__name__ in ["QConv2D", "Conv2D", "QConv2DBatchnorm"]:
 
     output_shape = layer.compute_output_shape(input_shape)
     _, _, _, channels_i = input_shape
@@ -248,16 +246,6 @@ def get_weights(layer, model_weights_already_quantized=True):
   return out
 
 
-def get_scale_from_quantized_bits_with_auto_po2(quantizer):
-  """Get scale from quantized_bits with alpha=auto_po2."""
-  if hasattr(quantizer.scale, "numpy"):
-    return quantizer.scale.numpy()
-  elif isinstance(quantizer.scale, np.ndarray):
-    return quantizer.scale
-  else:
-    return None
-
-
 def adjust_multiplier_for_auto_po2(multiplier, qkeras_weight_quantizer):
   """Adjust multiplier when weight quantizer is auto_po2 type.
 
@@ -273,18 +261,25 @@ def adjust_multiplier_for_auto_po2(multiplier, qkeras_weight_quantizer):
   print("adjust multiplier for auto_po2 ...")
   output_quantizer = multiplier.output
   if (hasattr(qkeras_weight_quantizer, "__str__") and
-      "quantized_bits" in qkeras_weight_quantizer.__str__() and
+      ("quantized_bits" in qkeras_weight_quantizer.__str__() or 
+       "quantized_linear" in qkeras_weight_quantizer.__str__()) and
       qkeras_weight_quantizer.alpha == "auto_po2"):
     bits = output_quantizer.bits
     int_bits = output_quantizer.int_bits
-    scale = get_scale_from_quantized_bits_with_auto_po2(
-        qkeras_weight_quantizer)
-    if scale is not None:
+    if "quantized_bits" in qkeras_weight_quantizer.__str__():
+      scale = qkeras_weight_quantizer.scale
+    elif "quantized_linear" in qkeras_weight_quantizer.__str__():
+      scale = qkeras_weight_quantizer.quantization_scale
+    if hasattr(scale, "numpy"):
+      scale = qkeras_weight_quantizer.scale
+      # if scale doesn't have numpy() function, it means the quantizer has
+      # never being called. Therfore we skip the following steps
+      scale = scale.numpy()
       if isinstance(scale, np.ndarray):
         scale = np.squeeze(scale)
         max_shift = int(np.log2(np.max(scale)))
         min_shift = int(np.log2(np.min(scale)))
-      elif isinstance(scale, float):
+      elif isinstance(scale, (float, np.float32)):
         max_shift = int(np.log2(scale))
         min_shift = max_shift
       else:
@@ -301,15 +296,14 @@ def adjust_multiplier_for_auto_po2(multiplier, qkeras_weight_quantizer):
       output_quantizer.bits = total_bits
       output_quantizer.int_bits = max_int_bits
     else:
-      # If scale is None, it means the quantizer has
-      # never being called. Therfore we skip the bitwidth adjustment steps
       print("[WARNING] The weight quantizer is never called even though it has "
             "alpha=auto_po2. In this case we do not adjust the multiplier and "
             "accumulator bit width since we don't know the exact values of "
             "scale", file=sys.stderr)
   elif hasattr(qkeras_weight_quantizer, "alpha") and (
       qkeras_weight_quantizer.alpha == "auto_po2"):
-    print("[WARNING] auto_po2 is detected on a non-quantized_bits quantizer."
+    print("[WARNING] auto_po2 is detected on a non-quantized_bits/"
+          "quantized_linear quantizer. "
           "Currently in QTools we do not yet support the auto_po2 with the "
           f" given quantizer type: {type(qkeras_weight_quantizer)}."
           "Therefore we do not adjust the multiplier and accumulator bit width")
@@ -358,11 +352,7 @@ def find_divisors(num):
 def get_layer_info(layer: tf.keras.layers.Layer, attr_name: str):
 
   layer_type = layer.__class__.__name__
-  supported_layer_types = [
-      "QDense", "QConv2D", "QDepthwiseConv2D", "MaxPooling2D",
-      "GlobalMaxPooling2D", "QAveragePooling2D", "QGlobalAveragePooling2D",
-      "UpSampling2D", "Concatenate", "QBatchNormalization", "QActivation",
-      "Activation", "Dropout", "Reshape", "ZeroPadding2D"]
+  supported_layer_types = ["QConv2D"]
   assert layer_type in supported_layer_types, (
       f"For now only {supported_layer_types} layers are supported. "
       f"Found {layer_type} instead.")
@@ -371,16 +361,17 @@ def get_layer_info(layer: tf.keras.layers.Layer, attr_name: str):
   input_channel = layer.input_shape[-1]
   output_channel = layer.output_shape[-1]
 
-  # Change default kernel_size to 1 to represent Dense Layer with Conv Layers.
   kernel_height, kernel_width = layer.kernel_size if hasattr(
-      layer, "kernel_size") else (1, 1)
+      layer, "kernel_size") else (None, None)
 
+  quantizer_bits = layer.kernel_quantizer.bits
   layer_dict = {
       "layer_type": layer_type,
       "input_channel": input_channel,
       "output_channel": output_channel,
       "kernel_height": kernel_height,
-      "kernel_width": kernel_width
+      "kernel_width": kernel_width,
+      "quantizer_bits": quantizer_bits
   }
   return layer_dict.get(attr_name, None)
 

@@ -154,7 +154,7 @@ class QBatchNormalization(BatchNormalization, PrunableLayer):
                     'in qkeras qnormalization.py.')
       del kwargs['adjustment']
 
-    super().__init__(
+    super(QBatchNormalization, self).__init__(
         axis=axis,
         momentum=momentum,
         epsilon=epsilon,
@@ -172,8 +172,7 @@ class QBatchNormalization(BatchNormalization, PrunableLayer):
         renorm=False,
         virtual_batch_size=None,
         adjustment=None,
-        **kwargs
-    )
+        **kwargs)
 
   def call(self, inputs, training=None):
     if self.scale and self.gamma_quantizer:
@@ -309,48 +308,48 @@ class QBatchNormalization(BatchNormalization, PrunableLayer):
         'center': self.center,
         'scale': self.scale,
         'beta_quantizer': constraints.serialize(
-            self.beta_quantizer_internal# Google internal code, commented out by copybara
+            self.beta_quantizer_internal
         ),
         'gamma_quantizer': constraints.serialize(
-            self.gamma_quantizer_internal# Google internal code, commented out by copybara
+            self.gamma_quantizer_internal
         ),
         'mean_quantizer': constraints.serialize(
-            self.mean_quantizer_internal# Google internal code, commented out by copybara
+            self.mean_quantizer_internal
         ),
         'variance_quantizer': constraints.serialize(
-            self.variance_quantizer_internal# Google internal code, commented out by copybara
+            self.variance_quantizer_internal
         ),
         'beta_initializer': initializers.serialize(
-            self.beta_initializer# Google internal code, commented out by copybara
+            self.beta_initializer
         ),
         'gamma_initializer': initializers.serialize(
-            self.gamma_initializer# Google internal code, commented out by copybara
+            self.gamma_initializer
         ),
         'moving_mean_initializer': initializers.serialize(
-            self.moving_mean_initializer# Google internal code, commented out by copybara
+            self.moving_mean_initializer
         ),
         'moving_variance_initializer': initializers.serialize(
-            self.moving_variance_initializer# Google internal code, commented out by copybara
+            self.moving_variance_initializer
         ),
         'inverse_quantizer': initializers.serialize(
-            self.inverse_quantizer_internal# Google internal code, commented out by copybara
+            self.inverse_quantizer_internal
         ),
         'beta_regularizer': regularizers.serialize(
-            self.beta_regularizer# Google internal code, commented out by copybara
+            self.beta_regularizer
         ),
         'gamma_regularizer': regularizers.serialize(
-            self.gamma_regularizer# Google internal code, commented out by copybara
+            self.gamma_regularizer
         ),
         'beta_constraint': constraints.serialize(
-            self.beta_constraint# Google internal code, commented out by copybara
+            self.beta_constraint
         ),
         'gamma_constraint': constraints.serialize(
-            self.gamma_constraint# Google internal code, commented out by copybara
+            self.gamma_constraint
         ),
         'beta_range': self.beta_range,
         'gamma_range': self.gamma_range,
     }
-    base_config = super().get_config()
+    base_config = super(QBatchNormalization, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
   def compute_output_shape(self, input_shape):

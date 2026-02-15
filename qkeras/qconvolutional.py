@@ -16,10 +16,9 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
 import warnings
 
-import numpy as np
+import tensorflow.keras.utils as conv_utils
 import tensorflow as tf
 from tensorflow.keras import constraints
 from tensorflow.keras import initializers
@@ -28,73 +27,20 @@ from tensorflow.keras.layers import Activation
 from tensorflow.keras.layers import Conv1D
 from tensorflow.keras.layers import Conv2D
 from tensorflow.keras.layers import Conv2DTranspose
+from tensorflow.keras.layers import SeparableConv1D
+from tensorflow.keras.layers import SeparableConv2D
 from tensorflow.keras.layers import DepthwiseConv2D
 from tensorflow.keras.layers import Dropout
 from tensorflow.keras.layers import InputSpec
-from tensorflow.keras.layers import SeparableConv1D
-from tensorflow.keras.layers import SeparableConv2D
+from tensorflow.python.eager import context
+from tensorflow.python.ops import array_ops
 
 from .qlayers import get_auto_range_constraint_initializer
 from .qlayers import QActivation
 from .quantizers import get_quantized_initializer
 from .quantizers import get_quantizer
-from tensorflow.python.eager import context
-from tensorflow.python.ops import array_ops
-# from tensorflow.python.ops import array_ops
+
 from tensorflow_model_optimization.python.core.sparsity.keras.prunable_layer import PrunableLayer
-
-
-def deconv_output_length(
-    input_length,
-    filter_size,
-    padding,
-    output_padding=None,
-    stride=0,
-    dilation=1,
-):
-  """Determines output length of a transposed convolution given input length.
-
-  Args:
-      input_length: Integer.
-      filter_size: Integer.
-      padding: one of `"same"`, `"valid"`, `"full"`.
-      output_padding: Integer, amount of padding along the output dimension.
-        Can be set to `None` in which case the output length is inferred.
-      stride: Integer.
-      dilation: Integer.
-
-  Returns:
-      The output length (integer).
-  """
-  assert padding in {"same", "valid", "full"}
-  if input_length is None:
-    return None
-
-  # Get the dilated kernel size
-  filter_size = filter_size + (filter_size - 1) * (dilation - 1)
-  pad = 0
-  length = 0
-
-  # Infer length if output padding is None, else compute the exact length
-  if output_padding is None:
-    if padding == "valid":
-      length = input_length * stride + max(filter_size - stride, 0)
-    elif padding == "full":
-      length = input_length * stride - (stride + filter_size - 2)
-    elif padding == "same":
-      length = input_length * stride
-  else:
-    if padding == "same":
-      pad = filter_size // 2
-    elif padding == "valid":
-      pad = 0
-    elif padding == "full":
-      pad = filter_size - 1
-
-    length = (
-        (input_length - 1) * stride + filter_size - 2 * pad + output_padding
-    )
-  return length
 
 
 class QConv1D(Conv1D, PrunableLayer):
@@ -172,7 +118,7 @@ class QConv1D(Conv1D, PrunableLayer):
     if activation is not None:
       activation = get_quantizer(activation)
 
-    super().__init__(
+    super(QConv1D, self).__init__(
         filters=filters,
         kernel_size=kernel_size,
         strides=strides,
@@ -187,8 +133,7 @@ class QConv1D(Conv1D, PrunableLayer):
         activity_regularizer=activity_regularizer,
         kernel_constraint=kernel_constraint,
         bias_constraint=bias_constraint,
-        **kwargs
-    )
+        **kwargs)
 
   def call(self, inputs):
     if self.kernel_quantizer:
@@ -220,10 +165,10 @@ class QConv1D(Conv1D, PrunableLayer):
   def get_config(self):
     config = {
         "kernel_quantizer": constraints.serialize(
-            self.kernel_quantizer_internal# Google internal code, commented out by copybara
+            self.kernel_quantizer_internal
         ),
         "bias_quantizer": constraints.serialize(
-            self.bias_quantizer_internal# Google internal code, commented out by copybara
+            self.bias_quantizer_internal
         ),
         "kernel_range": self.kernel_range,
         "bias_range": self.bias_range,
@@ -262,36 +207,32 @@ class QConv2D(Conv2D, PrunableLayer):
   #   can go over [-1,+1], these values are used to set the clipping
   #   value of kernels and biases, respectively, instead of using the
   #   constraints specified by the user.
-  # mask: Optional mask for kernel weights.
   #
   # we refer the reader to the documentation of Conv2D in Keras for the
   # other parameters.
   #
 
-  def __init__(
-      self,
-      filters,
-      kernel_size,
-      strides=(1, 1),
-      padding="valid",
-      data_format="channels_last",
-      dilation_rate=(1, 1),
-      activation=None,
-      use_bias=True,
-      kernel_initializer="he_normal",
-      bias_initializer="zeros",
-      kernel_regularizer=None,
-      bias_regularizer=None,
-      activity_regularizer=None,
-      kernel_constraint=None,
-      bias_constraint=None,
-      kernel_range=None,
-      bias_range=None,
-      kernel_quantizer=None,
-      bias_quantizer=None,
-      mask=None,
-      **kwargs,
-  ):
+  def __init__(self,
+               filters,
+               kernel_size,
+               strides=(1, 1),
+               padding="valid",
+               data_format="channels_last",
+               dilation_rate=(1, 1),
+               activation=None,
+               use_bias=True,
+               kernel_initializer="he_normal",
+               bias_initializer="zeros",
+               kernel_regularizer=None,
+               bias_regularizer=None,
+               activity_regularizer=None,
+               kernel_constraint=None,
+               bias_constraint=None,
+               kernel_range=None,
+               bias_range=None,
+               kernel_quantizer=None,
+               bias_quantizer=None,
+               **kwargs):
 
     if kernel_range is not None:
       warnings.warn("kernel_range is deprecated in QConv2D layer.")
@@ -330,21 +271,7 @@ class QConv2D(Conv2D, PrunableLayer):
     if activation is not None:
       activation = get_quantizer(activation)
 
-    if mask is not None:
-      shape = mask.shape
-      if len(shape) < 2:
-        raise ValueError(
-            "Expected shape to have rank at least 2 but provided shape has"
-            f" rank {len(shape)}"
-        )
-      h, w = shape[0], shape[1]
-      self._mask = np.reshape(
-          mask, (h, w, 1, 1)
-      )  # Extend the dimension to be 4D.
-    else:
-      self._mask = None
-
-    super().__init__(
+    super(QConv2D, self).__init__(
         filters=filters,
         kernel_size=kernel_size,
         strides=strides,
@@ -360,22 +287,7 @@ class QConv2D(Conv2D, PrunableLayer):
         activity_regularizer=activity_regularizer,
         kernel_constraint=kernel_constraint,
         bias_constraint=bias_constraint,
-        **kwargs
-    )
-
-  def convolution_op(self, inputs, kernel):
-    return tf.keras.backend.conv2d(
-        inputs,
-        kernel,
-        strides=self.strides,
-        padding=self.padding,
-        data_format=self.data_format,
-        dilation_rate=self.dilation_rate,
-    )
-
-  @tf.function(jit_compile=True)
-  def _jit_compiled_convolution_op(self, inputs, kernel):
-    return self.convolution_op(inputs, kernel)
+        **kwargs)
 
   def call(self, inputs):
     if self.kernel_quantizer:
@@ -383,24 +295,13 @@ class QConv2D(Conv2D, PrunableLayer):
     else:
       quantized_kernel = self.kernel
 
-    if self._mask is not None:
-      # Apply mask to kernel weights if one is provided.
-      quantized_kernel = quantized_kernel * self._mask
-
-    # Grouped convolutions are not fully supported on the CPU for compiled
-    # functions.
-    #
-    # This is a workaround taken from TF's core library. Remove when proper
-    # support is added.
-    # See definition of function "_jit_compiled_convolution_op" at
-    # cs/third_party/py/tf_keras/layers/convolutional/base_conv.py for more
-    # details.
-    if self.groups > 1:
-      outputs = self._jit_compiled_convolution_op(
-          inputs, tf.convert_to_tensor(quantized_kernel)
-      )
-    else:
-      outputs = self.convolution_op(inputs, quantized_kernel)
+    outputs = tf.keras.backend.conv2d(
+        inputs,
+        quantized_kernel,
+        strides=self.strides,
+        padding=self.padding,
+        data_format=self.data_format,
+        dilation_rate=self.dilation_rate)
 
     if self.use_bias:
       if self.bias_quantizer:
@@ -409,8 +310,7 @@ class QConv2D(Conv2D, PrunableLayer):
         quantized_bias = self.bias
 
       outputs = tf.keras.backend.bias_add(
-          outputs, quantized_bias, data_format=self.data_format
-      )
+          outputs, quantized_bias, data_format=self.data_format)
 
     if self.activation is not None:
       return self.activation(outputs)
@@ -419,25 +319,16 @@ class QConv2D(Conv2D, PrunableLayer):
   def get_config(self):
     config = {
         "kernel_quantizer": constraints.serialize(
-            self.kernel_quantizer_internal# Google internal code, commented out by copybara
+            self.kernel_quantizer_internal
         ),
         "bias_quantizer": constraints.serialize(
-            self.bias_quantizer_internal# Google internal code, commented out by copybara
+            self.bias_quantizer_internal
         ),
         "kernel_range": self.kernel_range,
         "bias_range": self.bias_range,
-        "mask": self._mask.tolist() if self._mask is not None else None,
     }
-    base_config = super().get_config()
+    base_config = super(QConv2D, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
-
-  @classmethod
-  def from_config(cls, config):
-    mask = config.get("mask")
-    if mask is not None:
-      mask = np.array(mask)
-    config["mask"] = mask
-    return cls(**config)
 
   def get_quantization_config(self):
     return {
@@ -520,7 +411,7 @@ class QConv2DTranspose(Conv2DTranspose, PrunableLayer):
     if activation is not None:
       activation = get_quantizer(activation)
 
-    super().__init__(
+    super(QConv2DTranspose, self).__init__(
         filters=filters,
         kernel_size=kernel_size,
         strides=strides,
@@ -537,8 +428,7 @@ class QConv2DTranspose(Conv2DTranspose, PrunableLayer):
         activity_regularizer=activity_regularizer,
         kernel_constraint=kernel_constraint,
         bias_constraint=bias_constraint,
-        **kwargs
-    )
+        **kwargs)
 
   def call(self, inputs):
     inputs_shape = array_ops.shape(inputs)
@@ -558,18 +448,18 @@ class QConv2DTranspose(Conv2DTranspose, PrunableLayer):
       out_pad_h, out_pad_w = self.output_padding
 
     # Infer the dynamic output shape:
-    out_height = deconv_output_length(height,
-                                      kernel_h,
-                                      padding=self.padding,
-                                      output_padding=out_pad_h,
-                                      stride=stride_h,
-                                      dilation=self.dilation_rate[0])
-    out_width = deconv_output_length(width,
-                                     kernel_w,
-                                     padding=self.padding,
-                                     output_padding=out_pad_w,
-                                     stride=stride_w,
-                                     dilation=self.dilation_rate[1])
+    out_height = conv_utils.deconv_output_length(height,
+                                                 kernel_h,
+                                                 padding=self.padding,
+                                                 output_padding=out_pad_h,
+                                                 stride=stride_h,
+                                                 dilation=self.dilation_rate[0])
+    out_width = conv_utils.deconv_output_length(width,
+                                                kernel_w,
+                                                padding=self.padding,
+                                                output_padding=out_pad_w,
+                                                stride=stride_w,
+                                                dilation=self.dilation_rate[1])
     if self.data_format == 'channels_first':
       output_shape = (batch_size, self.filters, out_height, out_width)
     else:
@@ -613,10 +503,10 @@ class QConv2DTranspose(Conv2DTranspose, PrunableLayer):
   def get_config(self):
     config = {
         "kernel_quantizer": constraints.serialize(
-            self.kernel_quantizer_internal# Google internal code, commented out by copybara
+            self.kernel_quantizer_internal
         ),
         "bias_quantizer": constraints.serialize(
-            self.bias_quantizer_internal# Google internal code, commented out by copybara
+            self.bias_quantizer_internal
         ),
     }
     base_config = super(QConv2DTranspose, self).get_config()
@@ -708,7 +598,7 @@ class QSeparableConv1D(SeparableConv1D, PrunableLayer):
     if activation is not None:
       activation = get_quantizer(activation)
 
-    super().__init__(
+    super(QSeparableConv1D, self).__init__(
         filters=filters,
         kernel_size=kernel_size,
         strides=strides,
@@ -728,8 +618,7 @@ class QSeparableConv1D(SeparableConv1D, PrunableLayer):
         depthwise_constraint=constraints.get(depthwise_constraint),
         pointwise_constraint=constraints.get(pointwise_constraint),
         bias_constraint=constraints.get(bias_constraint),
-        **kwargs
-    )
+        **kwargs)
 
   def call(self, inputs):
     if self.padding == 'causal':
@@ -789,13 +678,13 @@ class QSeparableConv1D(SeparableConv1D, PrunableLayer):
   def get_config(self):
     config = {
         "depthwise_quantizer": constraints.serialize(
-            self.depthwise_quantizer_internal# Google internal code, commented out by copybara
+            self.depthwise_quantizer_internal
         ),
         "pointwise_quantizer": constraints.serialize(
-            self.pointwise_quantizer_internal# Google internal code, commented out by copybara
+            self.pointwise_quantizer_internal
         ),
         "bias_quantizer": constraints.serialize(
-            self.bias_quantizer_internal# Google internal code, commented out by copybara
+            self.bias_quantizer_internal
         ),
     }
     base_config = super(QSeparableConv1D, self).get_config()
@@ -887,7 +776,7 @@ class QSeparableConv2D(SeparableConv2D, PrunableLayer):
     if activation is not None:
       activation = get_quantizer(activation)
 
-    super().__init__(
+    super(QSeparableConv2D, self).__init__(
         filters=filters,
         kernel_size=kernel_size,
         strides=strides,
@@ -907,8 +796,7 @@ class QSeparableConv2D(SeparableConv2D, PrunableLayer):
         depthwise_constraint=constraints.get(depthwise_constraint),
         pointwise_constraint=constraints.get(pointwise_constraint),
         bias_constraint=constraints.get(bias_constraint),
-        **kwargs
-    )
+        **kwargs)
 
   def call(self, inputs):
     # Apply the actual ops.
@@ -951,13 +839,13 @@ class QSeparableConv2D(SeparableConv2D, PrunableLayer):
   def get_config(self):
     config = {
         "depthwise_quantizer": constraints.serialize(
-            self.depthwise_quantizer_internal# Google internal code, commented out by copybara
+            self.depthwise_quantizer_internal
         ),
         "pointwise_quantizer": constraints.serialize(
-            self.pointwise_quantizer_internal# Google internal code, commented out by copybara
+            self.pointwise_quantizer_internal
         ),
         "bias_quantizer": constraints.serialize(
-            self.bias_quantizer_internal# Google internal code, commented out by copybara
+            self.bias_quantizer_internal
         ),
     }
     base_config = super(QSeparableConv2D, self).get_config()
@@ -1046,7 +934,7 @@ class QDepthwiseConv2D(DepthwiseConv2D, PrunableLayer):
     if activation is not None:
       activation = get_quantizer(activation)
 
-    super().__init__(
+    super(QDepthwiseConv2D, self).__init__(
         kernel_size=kernel_size,
         strides=strides,
         padding=padding,
@@ -1062,8 +950,7 @@ class QDepthwiseConv2D(DepthwiseConv2D, PrunableLayer):
         depthwise_constraint=depthwise_constraint,
         bias_constraint=bias_constraint,
         dilation_rate=dilation_rate,
-        **kwargs
-    )
+        **kwargs)
 
   def build(self, input_shape):
     if len(input_shape) < 4:
@@ -1137,19 +1024,19 @@ class QDepthwiseConv2D(DepthwiseConv2D, PrunableLayer):
     config.pop("kernel_constraint", None)
     config["depth_multiplier"] = self.depth_multiplier
     config["depthwise_initializer"] = initializers.serialize(
-        self.depthwise_initializer# Google internal code, commented out by copybara
+        self.depthwise_initializer
     )
     config["depthwise_regularizer"] = regularizers.serialize(
-        self.depthwise_regularizer# Google internal code, commented out by copybara
+        self.depthwise_regularizer
     )
     config["depthwise_constraint"] = constraints.serialize(
-        self.depthwise_constraint# Google internal code, commented out by copybara
+        self.depthwise_constraint
     )
     config["depthwise_quantizer"] = constraints.serialize(
-        self.depthwise_quantizer_internal# Google internal code, commented out by copybara
+        self.depthwise_quantizer_internal
     )
     config["bias_quantizer"] = constraints.serialize(
-        self.bias_quantizer_internal# Google internal code, commented out by copybara
+        self.bias_quantizer_internal
     )
     config["depthwise_range"] = self.depthwise_range
     config["bias_range"] = self.bias_range
