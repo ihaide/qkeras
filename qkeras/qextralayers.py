@@ -73,7 +73,6 @@ class QNearestNeighbourManhattan(Layer):
             )
         else:
             self.max_distance = max_distance
-        print("Max distance: ", self.max_distance)
         self.use_manhattan_distance = use_manhattan_distance
         super(QNearestNeighbourManhattan, self).__init__(**kwargs)
 
@@ -231,7 +230,6 @@ class QNearestNeighbourEuclidean(Layer):
             )
         else:
             self.max_distance = max_distance
-        print("Max distance: ", self.max_distance)
         self.use_manhattan_distance = use_manhattan_distance
         super(QNearestNeighbourEuclidean, self).__init__(**kwargs)
 
@@ -556,7 +554,6 @@ class QDistanceWeighting(Layer):
             input_quantizer = get_quantizer(f"quantized_linear({bits+2}, 0)")
             x = input_quantizer(input)
             x = tf.multiply(self.alpha, x)
-            # x = K.print_tensor(x, message="QExponential input")
             output = self.exponential_quantizer(x)
             output = tf.where(input >= 0.5-2**(-(bits+1)), 0.0, output)
         elif self.quadratic_quantizer is not None:
@@ -576,9 +573,7 @@ class QDistanceWeighting(Layer):
             output = get_quantizer(self.linear_quantizer)(x)
         else:
             x = tf.multiply(self.alpha, input)
-            # x = K.print_tensor(x, message="QExponential input")
             output = tf.keras.backend.exp(x)
-        # output = K.print_tensor(output, message="QExponential output")
 
         return output
 

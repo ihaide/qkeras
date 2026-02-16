@@ -3583,8 +3583,6 @@ class quantized_exp(BaseQuantizer):  # pylint: disable=invalid-name
         m = K.cast(K.pow(K.cast(2, dtype="float32"), non_sign_bits), dtype="float32")
         m_i = K.cast(K.pow(K.cast(2, dtype="float32"), self.integer), dtype="float32")
 
-        print(m)
-
         if self.exp_upper_bound is not None:
             x_u = tf.where(
                 x <= self.exp_upper_bound,
